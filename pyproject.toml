@@ -1,0 +1,27 @@
+[project]
+name = "main"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Michail Fedyaev",email = "drovosekov1910@mail.ru"}
+]
+requires-python = "^3.15"
+dependencies = [
+    "djangorestframework (>=3.18.3,<4.0.0)",
+    "django (>=6.1.3,<7.0.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "psycopg2-binary (>=2.9.13,<3.0.0)",
+    "loguru (>=0.7.3,<0.8.0)",
+    "requests (>=2.34.2,<3.0.0)",
+    "django-phonenumber-field (>=9.0.0,<10.0.0)",
+    "redis (>=8.1.0,<9.0.0)",
+    "djangorestframework-simplejwt (>=5.5.1,<6.0.0)",
+    "smsaero-api (>=3.2.0,<4.0.0)",
+    "coverage (>=7.17.2,<8.0.0)",
+    "flake8 (>=7.5.0,<8.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
