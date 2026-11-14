@@ -15,8 +15,20 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.conf import settings
+from django.conf.urls.static import static
+from django.urls import include, path
+from publish.views import MockCourseAccessView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/auth/', include('users.urls')),
+    path('api/', include('author.urls')),
+    path('api/', include('publish.urls')),
 ]
+
+if settings.DEBUG:
+    urlpatterns += [
+        path("api/dev/mock-course-access/", MockCourseAccessView.as_view(), name="mock-course-access"),
+    ]
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

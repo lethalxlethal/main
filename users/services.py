@@ -1,21 +1,25 @@
-import random
-import string
+import secrets
 import requests
 from urllib.parse import quote
+from django.core.cache import cache
 from django.conf import settings
 from loguru import logger
 from config.settings import DEBUG
 
 
+def generate_login_code(phone: str, name: str) -> str:
+    """Сохраняет одноразовый код и имя до подтверждения телефона."""
+    code = str(secrets.randbelow(10000)).zfill(4)
+    cache.set(
+        f"user_{phone}_code",
+        {"code": code, "name": name},
+        timeout=300,
+    )
+    return code
+
+
 def send_sms(phone: str, message: str) -> bool:
-    """
-    Отправляет SMS сообщение через SMS Aero API используя HTTP-запросы
-    Args:
-        phone (str): Номер телефона получателя
-        message (str): Текст сообщения
-    Returns:
-        bool: True если сообщение успешно отправлено, False в противном случае
-    """
+    """Отправляет текстовое сообщение на телефон через SMS Aero и сообщает об успехе."""
     try:
         logger.info(f"Отправка SMS на номер {phone}")
 
@@ -65,12 +69,3 @@ def send_sms(phone: str, message: str) -> bool:
     except Exception as e:
         logger.error(f"Неожиданная ошибка при отправке SMS: {str(e)}")
         return False
-
-
-def generate_invite_code() -> str:
-    """
-    Генерирует 6-значный инвайт-код
-    Returns:
-        str: Сгенерированный инвайт-код
-    """
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))

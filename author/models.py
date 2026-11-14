@@ -10,6 +10,7 @@ class AuthorCategory(models.TextChoices):
 
     PROGRAMMING = "programming", "Программирование"
     DESIGN = "design", "Дизайн"
+    FINANCE = "finance", "Финансы"
     MARKETING = "marketing", "Маркетинг"
     BUSINESS = "business", "Бизнес"
     LANGUAGES = "languages", "Языки"
@@ -19,14 +20,21 @@ class AuthorCategory(models.TextChoices):
 class Author(models.Model):
     """Карточка автора.
 
-    Учётной записи пока нет: автор заводится как запись каталога.
-    Его курсы читаются так: author.publish.all().
+    Профиль можно связать с одним или несколькими аккаунтами авторов.
+    Курсы читаются так: author.publish.all().
     Отдельной колонки «курсы» у автора нет. Каждый курс сам хранит
     ссылку на автора (Course.author), а related_name="publish"
     открывает эту связь со стороны автора.
     """
 
     name = models.CharField("Имя автора", max_length=150)
+    users = models.ManyToManyField(
+        "users.User",
+        blank=True,
+        related_name="author_profiles",
+        verbose_name="Аккаунты авторов",
+        help_text="Пользователи с ролью «Автор», которым принадлежит этот профиль.",
+    )
     description = models.TextField(
         "Описание",
         help_text="В какой области разбирается и чем полезен ученикам",
