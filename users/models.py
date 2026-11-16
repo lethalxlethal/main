@@ -9,6 +9,7 @@ NAME_ERROR = (
     "Имя не длиннее 15 символов: только буквы, точка и подчёркивание. "
     "Цифры и спецсимволы нельзя."
 )
+NAME_TAKEN_ERROR = "Пользователь с таким именем уже существует."
 
 
 def validate_user_name(value):
@@ -60,6 +61,7 @@ class User(AbstractUser):
         "Имя пользователя",
         max_length=15,
         validators=[validate_user_name],
+        unique=True,
     )
     phone = PhoneNumberField(region="RU", unique=True, verbose_name="Телефон")
     role = models.CharField(
@@ -89,3 +91,11 @@ class User(AbstractUser):
     class Meta:
         verbose_name = "Пользователь"
         verbose_name_plural = "Пользователи"
+
+    def clean(self):
+        """Проверяет регистронезависимую уникальность имени в Django Admin."""
+        super().clean()
+        normalized_name = self.name.strip().casefold()
+        duplicates = type(self).objects.exclude(pk=self.pk).only("id", "name")
+        if any(user.name.casefold() == normalized_name for user in duplicates.iterator()):
+            raise ValidationError({"name": NAME_TAKEN_ERROR})

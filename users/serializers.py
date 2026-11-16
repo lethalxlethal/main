@@ -2,7 +2,18 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from publish.models import Course
-from .models import NAME_ERROR, User, validate_user_name
+from .models import NAME_ERROR, NAME_TAKEN_ERROR, User, validate_user_name
+
+
+def name_is_taken(value, *, exclude_user_id=None, exclude_phone=None):
+    """Проверяет уникальность имени без учёта регистра для Unicode-имён."""
+    users = User.objects.only("id", "name", "phone")
+    if exclude_user_id is not None:
+        users = users.exclude(pk=exclude_user_id)
+    if exclude_phone is not None:
+        users = users.exclude(phone=exclude_phone)
+    normalized = value.casefold()
+    return any(user.name.casefold() == normalized for user in users.iterator())
 
 
 class ProfileCourseSerializer(serializers.ModelSerializer):
@@ -40,6 +51,17 @@ class UserSerializer(serializers.ModelSerializer):
         """Возвращает связанные профили автора без персональных данных аккаунта."""
         return [{"id": profile.id, "name": profile.name} for profile in obj.author_profiles.all()]
 
+    def to_representation(self, instance):
+        """Показывает аватар автора, если личное фото пользователя не задано."""
+        data = super().to_representation(instance)
+        if not instance.avatar:
+            author = instance.author_profiles.exclude(avatar="").first()
+            if author and author.avatar:
+                avatar_url = author.avatar.url
+                request = self.context.get("request")
+                data["avatar"] = request.build_absolute_uri(avatar_url) if request else avatar_url
+        return data
+
     def update(self, instance, validated_data):
         """Сохраняет редактируемые данные профиля, включая загруженный аватар."""
         if "name" in validated_data:
@@ -57,6 +79,8 @@ class UserSerializer(serializers.ModelSerializer):
             validate_user_name(value)
         except DjangoValidationError:
             raise serializers.ValidationError(NAME_ERROR)
+        if name_is_taken(value, exclude_user_id=self.instance.pk if self.instance else None):
+            raise serializers.ValidationError(NAME_TAKEN_ERROR)
         return value
 
 
@@ -74,6 +98,12 @@ class RegisterSerializer(serializers.Serializer):
         except DjangoValidationError:
             raise serializers.ValidationError(NAME_ERROR)
         return value
+
+    def validate(self, attrs):
+        """Не позволяет запросить вход под именем другого аккаунта."""
+        if name_is_taken(attrs["name"], exclude_phone=attrs["phone"]):
+            raise serializers.ValidationError({"name": "Это имя уже занято. Выберите другое."})
+        return attrs
 
 
 class VerifyCodeSerializer(serializers.Serializer):

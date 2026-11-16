@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.urls import reverse
 
 from .models import User
 
@@ -44,3 +45,40 @@ class UserAdmin(admin.ModelAdmin):
     def course_count(self, obj):
         """Считает курсы, доступные пользователю."""
         return obj.course.count()
+
+
+# Добавляет отдельный пункт навигации для модераторов в боковое меню Django Admin.
+# Это дополнительная ссылка на UserAdmin с фильтром роли, отдельная модель не нужна.
+_original_get_app_list = admin.site.get_app_list
+
+
+def get_app_list_with_moderators(request, app_label=None):
+    """Выводит модераторов отдельной группой, сохраняя общий список пользователей."""
+    app_list = _original_get_app_list(request, app_label)
+    if app_label is not None:
+        return app_list
+
+    users_app = next((app for app in app_list if app["app_label"] == "users"), None)
+    user_model = next((model for model in users_app["models"] if model["object_name"] == "User"), None) if users_app else None
+    if not user_model:
+        return app_list
+
+    moderator_url = f'{reverse("admin:users_user_changelist")}?role__exact=moderator'
+    moderator_model = {
+        **user_model,
+        "name": "Модераторы",
+        "admin_url": moderator_url,
+        "add_url": None,
+    }
+    app_list.append({
+        "name": "Модераторы",
+        "app_label": "moderator_accounts",
+        "app_url": moderator_url,
+        "has_module_perms": True,
+        "models": [moderator_model],
+    })
+    app_list.sort(key=lambda app: app["name"].lower())
+    return app_list
+
+
+admin.site.get_app_list = get_app_list_with_moderators

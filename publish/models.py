@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -104,6 +105,8 @@ class Lesson(models.Model):
     )
     title = models.CharField("Заголовок", max_length=200)
     body = models.TextField("Текст урока")
+    image = models.ImageField("Изображение урока", upload_to="lessons/images/", blank=True)
+    video_url = models.URLField("Ссылка на видео", blank=True)
     position = models.PositiveIntegerField("Порядок", default=1)
 
     class Meta:
@@ -114,3 +117,40 @@ class Lesson(models.Model):
     def __str__(self):
         """Возвращает заголовок урока."""
         return self.title
+
+
+class LessonProgress(models.Model):
+    """Хранит отметку пользователя о завершении конкретного урока."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="lesson_progress")
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name="progress_records")
+    completed_at = models.DateTimeField("Дата завершения", null=True, blank=True)
+    last_viewed_at = models.DateTimeField("Последний просмотр", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Прогресс по уроку"
+        verbose_name_plural = "Прогресс по урокам"
+        constraints = [models.UniqueConstraint(fields=["user", "lesson"], name="unique_user_lesson_progress")]
+
+    def __str__(self):
+        return f"{self.user} — {self.lesson}"
+
+
+class LessonReview(models.Model):
+    """Хранит одну оценку и отзыв пользователя после завершения урока."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="lesson_reviews")
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name="reviews")
+    rating = models.PositiveSmallIntegerField("Оценка", choices=[(value, f"{value} из 5") for value in range(1, 6)])
+    comment = models.TextField("Отзыв", blank=True, max_length=2000)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Обновлён", auto_now=True)
+
+    class Meta:
+        verbose_name = "Отзыв на урок"
+        verbose_name_plural = "Отзывы на уроки"
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["user", "lesson"], name="unique_user_lesson_review")]
+
+    def __str__(self):
+        return f"{self.lesson}: {self.rating}/5 — {self.user}"

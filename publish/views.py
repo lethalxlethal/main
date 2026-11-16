@@ -1,7 +1,8 @@
+from decimal import Decimal, InvalidOperation
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from rest_framework.views import APIView
 
 from author.models import Author
 from config.pagination import OptionalLimitPagination
-from .models import Course, Lesson
+from .models import Course, Lesson, LessonProgress, LessonReview
 from .serializers import (
     CourseDetailSerializer,
     CourseSummarySerializer,
@@ -17,13 +18,16 @@ from .serializers import (
     AuthorCourseSerializer,
     AuthorLessonSerializer,
     ModerationDecisionSerializer,
+    LessonReviewReadSerializer,
+    LessonReviewWriteSerializer,
+    can_view_course_body,
     course_categories,
 )
 from .permissions import IsAuthor, IsModerator
 
 
 def filtered_courses(request):
-    """Фильтрует курсы по категории и автору из query-параметров запроса."""
+    """Фильтрует каталог по категории, автору и диапазону цен."""
     queryset = Course.objects.select_related("author").prefetch_related("lessons")
     queryset = queryset.filter(status=Course.Status.PUBLISHED)
     category = request.query_params.get("category")
@@ -40,6 +44,16 @@ def filtered_courses(request):
     author_id = request.query_params.get("creator") or request.query_params.get("author")
     if author_id:
         queryset = queryset.filter(author_id=author_id)
+    for parameter, lookup in (("min_price", "gte"), ("max_price", "lte")):
+        raw_value = request.query_params.get(parameter)
+        if raw_value not in (None, ""):
+            try:
+                value = Decimal(raw_value)
+            except (InvalidOperation, TypeError):
+                raise ValidationError({parameter: "Укажите корректную цену."})
+            if value < 0:
+                raise ValidationError({parameter: "Цена не может быть отрицательной."})
+            queryset = queryset.filter(**{f"price__{lookup}": value})
     return queryset
 
 
@@ -91,6 +105,61 @@ class LessonDetailView(generics.RetrieveAPIView):
 
     serializer_class = LessonSerializer
     queryset = Lesson.objects.filter(course__status=Course.Status.PUBLISHED).select_related("course")
+
+
+class LessonProgressView(APIView):
+    """Сохраняет завершение урока для расчёта учебного прогресса."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        """Записывает просмотр урока либо отмечает его завершённым."""
+        lesson = get_object_or_404(Lesson.objects.select_related("course"), pk=pk, course__status=Course.Status.PUBLISHED)
+        if not can_view_course_body(lesson.course, request.user):
+            raise PermissionDenied("Для завершения урока нужен доступ к курсу.")
+        action = request.data.get("action", "complete")
+        if action not in {"viewed", "complete"}:
+            raise ValidationError({"action": "Допустимы действия viewed или complete."})
+        progress, _created = LessonProgress.objects.get_or_create(user=request.user, lesson=lesson)
+        progress.last_viewed_at = timezone.now()
+        if action == "complete" and progress.completed_at is None:
+            progress.completed_at = progress.last_viewed_at
+        progress.save(update_fields=["last_viewed_at", "completed_at"])
+        return Response({"lesson_id": lesson.id, "completed": progress.completed_at is not None, "completed_at": progress.completed_at})
+
+
+class LessonReviewView(APIView):
+    """Возвращает отзывы к уроку и принимает отзыв после его завершения."""
+
+    def get_permissions(self):
+        """Разрешает чтение отзывов всем, а создание — только вошедшим."""
+        return [IsAuthenticated()] if self.request.method == "POST" else [AllowAny()]
+
+    def get_lesson(self, pk):
+        """Находит урок только в опубликованном курсе."""
+        return get_object_or_404(Lesson.objects.select_related("course"), pk=pk, course__status=Course.Status.PUBLISHED)
+
+    def get(self, request, pk):
+        """Возвращает пять последних отзывов к указанному уроку."""
+        lesson = self.get_lesson(pk)
+        reviews = lesson.reviews.select_related("user").all()[:5]
+        return Response(LessonReviewReadSerializer(reviews, many=True).data)
+
+    def post(self, request, pk):
+        """Создаёт или обновляет отзыв пользователя, завершившего урок."""
+        lesson = self.get_lesson(pk)
+        if not can_view_course_body(lesson.course, request.user):
+            raise PermissionDenied("Сначала получите доступ к курсу.")
+        if lesson.course.author.users.filter(pk=request.user.pk).exists():
+            raise PermissionDenied("Автор не может оставлять отзывы на собственные уроки.")
+        if not LessonProgress.objects.filter(user=request.user, lesson=lesson, completed_at__isnull=False).exists():
+            raise PermissionDenied("Сначала отметьте урок завершённым.")
+        serializer = LessonReviewWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        review, _created = LessonReview.objects.update_or_create(
+            user=request.user, lesson=lesson, defaults=serializer.validated_data
+        )
+        return Response(LessonReviewReadSerializer(review).data)
 
 
 class CategoriesView(APIView):

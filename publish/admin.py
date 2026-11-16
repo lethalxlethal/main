@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.db import models
 from django.utils.html import format_html
 
-from .models import Course, Lesson
+from .models import Course, Lesson, LessonProgress, LessonReview
 
 
 class LessonInlineForm(forms.ModelForm):
@@ -25,7 +25,7 @@ class LessonInline(admin.StackedInline):
     extra = 1
     show_change_link = True
     ordering = ("position", "id")
-    fields = ("position", "title", "body")
+    fields = ("position", "title", "body", "image", "video_url")
     verbose_name = "Урок курса"
     verbose_name_plural = "Уроки курса"
 
@@ -91,7 +91,27 @@ class LessonAdmin(admin.ModelAdmin):
     ordering = ("course__name", "position", "id")
     list_select_related = ("course", "course__author")
     list_per_page = 30
-    fields = ("course", "position", "title", "body")
+    fields = ("course", "position", "title", "body", "image", "video_url")
     formfield_overrides = {
         models.TextField: {"widget": forms.Textarea(attrs={"rows": 12, "cols": 100})},
     }
+
+
+@admin.register(LessonProgress)
+class LessonProgressAdmin(admin.ModelAdmin):
+    """Позволяет просматривать сохранённый прогресс пользователей."""
+
+    list_display = ("user", "lesson", "last_viewed_at", "completed_at")
+    list_filter = ("completed_at", "last_viewed_at", "lesson__course")
+    search_fields = ("user__name", "user__phone", "lesson__title", "lesson__course__name")
+    list_select_related = ("user", "lesson", "lesson__course")
+
+
+@admin.register(LessonReview)
+class LessonReviewAdmin(admin.ModelAdmin):
+    """Позволяет модерировать оценки и отзывы к урокам."""
+
+    list_display = ("lesson", "user", "rating", "created_at")
+    list_filter = ("rating", "created_at", "lesson__course")
+    search_fields = ("user__name", "user__phone", "lesson__title", "comment")
+    list_select_related = ("user", "lesson", "lesson__course")

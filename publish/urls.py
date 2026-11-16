@@ -13,6 +13,8 @@ from .views import (
     AuthorLessonDetailView,
     ModerationQueueView,
     ModerationDecisionView,
+    LessonProgressView,
+    LessonReviewView,
 )
 
 urlpatterns = [
@@ -31,5 +33,7 @@ urlpatterns = [
     path("courses/<int:pk>/", CourseDetailView.as_view(), name="course-detail"),
     path("courses/<int:course_id>/lessons/", CourseLessonsView.as_view(), name="course-lessons"),
     path("lessons/<int:pk>/", LessonDetailView.as_view(), name="lesson-detail"),
+    path("lessons/<int:pk>/progress/", LessonProgressView.as_view(), name="lesson-progress"),
+    path("lessons/<int:pk>/reviews/", LessonReviewView.as_view(), name="lesson-reviews"),
     path("authors/<int:author_id>/courses/", AuthorCoursesView.as_view(), name="author-courses"),
 ]
